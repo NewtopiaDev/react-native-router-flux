@@ -3,7 +3,6 @@ import {
   StatusBar, Image, Animated, Easing,
 } from 'react-native';
 import {
-  createTabNavigator as DEPRECATED_createTabNavigator,
   createBottomTabNavigator,
   createMaterialTopTabNavigator,
   createDrawerNavigator,
@@ -12,15 +11,20 @@ import {
   StackActions,
   DrawerActions,
 } from 'react-navigation';
+import {
+  createTabNavigator as DEPRECATED_createTabNavigator,
+  TabBarTop as DEPRECATED_TabBarTop,
+  TabBarBottom as DEPRECATED_TabBarBottom,
+} from 'react-navigation-deprecated-tab-navigator';
 import PropTypes from 'prop-types';
-import { reducer } from './Reducer';
+import createReducer from './Reducer';
 import * as ActionConst from './ActionConst';
 import { OnEnter, OnExit, assert } from './Util';
 import { LeftButton, RightButton, BackButton } from './NavBar';
 import LightboxRenderer from './LightboxRenderer';
 import _drawerImage from '../images/menu_burger.png';
 import Scene from './Scene';
-import { getActiveState, getParent } from './State';
+import { getActiveState, getParent, getRouteNameByKey } from './State';
 import Modal from './Modal';
 import Lightbox from './Lightbox';
 import Drawer from './Drawer';
@@ -136,49 +140,52 @@ function createTabBarOptions({
 }
 function createNavigationOptions(params) {
   const {
-    title,
-    backButtonImage,
-    navTransparent,
-    backToInitial,
-    hideNavBar,
-    hideTabBar,
-    backTitle,
-    right,
-    rightButton,
-    left,
-    leftButton,
-    navigationBarStyle,
-    headerStyle,
-    navBarButtonColor,
-    tabBarLabel,
-    tabBarIcon,
-    icon,
-    getTitle,
-    renderTitle,
-    panHandlers,
-    navigationBarTitleImage,
-    navigationBarTitleImageStyle,
-    component,
-    rightTitle,
-    leftTitle,
-    leftButtonTextStyle,
-    rightButtonTextStyle,
-    backButtonTextStyle,
-    headerTitleStyle,
-    titleStyle,
-    navBar,
-    onRight,
-    onLeft,
-    rightButtonImage,
-    leftButtonImage,
-    init,
     back,
-    renderBackButton,
-    renderNavigationBar,
-    hideDrawerButton,
+    backButtonImage,
+    backButtonTextStyle,
+    backTitle,
+    backTitleEnabled,
+    backToInitial,
+    legacy,
+    component,
     drawerIcon,
     drawerImage,
     drawerPosition,
+    getTitle,
+    headerLayoutPreset,
+    headerStyle,
+    headerTitleStyle,
+    hideDrawerButton,
+    hideNavBar,
+    hideTabBar,
+    icon,
+    init,
+    left,
+    leftButton,
+    leftButtonImage,
+    leftButtonTextStyle,
+    leftTitle,
+    navBar,
+    navBarButtonColor,
+    navigationBarStyle,
+    navigationBarTitleImage,
+    navigationBarTitleImageStyle,
+    navTransparent,
+    onLeft,
+    onRight,
+    panHandlers,
+    renderBackButton,
+    renderNavigationBar,
+    renderTitle,
+    right,
+    rightButton,
+    rightButtonImage,
+    rightButtonTextStyle,
+    rightTitle,
+    tabBarIcon,
+    tabBarLabel,
+    title,
+    titleStyle,
     ...props
   } = params;
   const NavBar = renderNavigationBar || navBar;
@@ -195,15 +202,17 @@ function createNavigationOptions(params) {
     };
     const res = {
       ...props,
+      headerBackImage: navigationParams.backButtonImage || backButtonImage,
+      headerBackTitle: getValue(navigationParams.backTitle || backTitle, state),
+      headerBackTitleEnabled: navigationParams.backTitleEnabled || backTitleEnabled,
+      headerLayoutPreset: navigationParams.headerLayoutPreset || headerLayoutPreset,
+      headerLeft: getValue(navigationParams.left || left || leftButton || params.renderLeftButton, state),
+      headerRight: getValue(navigationParams.right || right || rightButton || params.renderRightButton, state),
+      headerStyle: getValue(navigationParams.headerStyle || headerStyle || navigationBarStyle, state),
       headerTintColor: navBarButtonColor || props.tintColor || navigationParams.tintColor || navigationParams.headerTintColor,
+      headerTitle: getValue(navigationParams.renderTitle || renderTitle || params.renderTitle, state),
       headerTitleStyle: headerTitleStyle || titleStyle,
       title: getValue(navigationParams.title || title || getTitle, state),
-      headerBackTitle: getValue(navigationParams.backTitle || backTitle, state),
-      headerRight: getValue(navigationParams.right || right || rightButton || params.renderRightButton, state),
-      headerLeft: getValue(navigationParams.left || left || leftButton || params.renderLeftButton, state),
-      headerTitle: getValue(navigationParams.renderTitle || renderTitle || params.renderTitle, state),
-      headerStyle: getValue(navigationParams.headerStyle || headerStyle || navigationBarStyle, state),
-      headerBackImage: navigationParams.backButtonImage || backButtonImage,
     };
 
     const NavBarFromParams = navigationParams.renderNavigationBar || navigationParams.navBar;
@@ -272,7 +281,7 @@ function createNavigationOptions(params) {
       || ((drawerImage || drawerIcon) && !hideDrawerButton && drawerPosition === 'right')
     ) {
       res.headerRight = getValue(navigationParams.right || navigationParams.rightButton || params.renderRightButton, { ...navigationParams, ...screenProps }) || (
-        <RightNavBarButton {...params} {...navigationParams} {...componentData} />
+        <RightNavBarButton navigation={navigation} {...params} {...navigationParams} {...componentData} />
       );
     }
 
@@ -293,16 +302,18 @@ function createNavigationOptions(params) {
       || navigationParams.backTitle
       || ((drawerImage || drawerIcon) && !hideDrawerButton && drawerPosition !== 'right')
     ) {
-      res.headerLeft = getValue(navigationParams.left || navigationParams.leftButton || params.renderLeftButton, { ...params, ...navigationParams, ...screenProps })
+      const leftButton = navigationParams.left || navigationParams.leftButton || params.renderLeftButton;
+      res.headerLeft = getValue(leftButton, { ...params, ...navigationParams, ...screenProps })
         || (((onLeft && (leftTitle || navigationParams.leftTitle || leftButtonImage || navigationParams.leftButtonImage)) || drawerImage || drawerIcon) && (
-          <LeftNavBarButton {...params} {...navigationParams} {...componentData} />
+          <LeftNavBarButton navigation={navigation} {...params} {...navigationParams} {...componentData} />
         ))
         || res.headerLeft
-        || (init ? null : (renderBackButton && renderBackButton(state)) || <BackNavBarButton {...state} />);
+        || (init ? null : (!leftButton && renderBackButton && renderBackButton(state)) || (!leftButton && <BackNavBarButton navigation={navigation} {...state} />))
+        || null;
     }
 
     if (back) {
-      res.headerLeft = (renderBackButton && renderBackButton(state)) || <BackNavBarButton {...state} />;
+      res.headerLeft = (renderBackButton && renderBackButton(state)) || <BackNavBarButton navigation={navigation} {...state} />;
     }
 
     if (typeof navigationParams.left !== 'undefined' || typeof navigationParams.leftButton !== 'undefined' || typeof navigationParams.renderLeftButton !== 'undefined') {
@@ -334,9 +345,14 @@ function createNavigationOptions(params) {
       res.headerStyle = { marginTop: StatusBar.currentHeight };
     }
 
-    if (backToInitial) {
+    if (!legacy && backToInitial) {
+      const userDefinedTabBarOnPress = res.tabBarOnPress;
       res.tabBarOnPress = (data) => {
-        if (data.navigation.state.index !== 0) {
+        if (userDefinedTabBarOnPress) {
+          console.warn('backToInitial and tabBarOnPress were both defined and might cause unexpected navigation behaviors. I hope you know what you are doing ;-)');
+          userDefinedTabBarOnPress(data);
+        }
+        if (data.navigation && data.navigation.state.index !== 0) {
           data.navigation.dispatch(StackActions.popToTop());
         } else {
           data.defaultHandler();
@@ -351,6 +367,9 @@ function originalRouteName(routeName) {
     return routeName.substring(1);
   }
   return routeName;
+}
+function isStatelessComponent(Component) {
+  return !Component.prototype || typeof Component.prototype.render !== 'function';
 }
 function extendProps(props, store: NavigationStore) {
   if (!props) {
@@ -382,7 +401,7 @@ function createWrapper(Component, wrapBy, store: NavigationStore) {
   // detect if the component is not functional stateless
   // not sure if Component can be string-defined ("div") here
   // may be there is a better way to detect stateless function component, but this should work
-  if (!Component.prototype || Component.prototype.render) {
+  if (!isStatelessComponent(Component)) {
     class Wrapped extends React.Component {
       static propTypes = {
         navigation: PropTypes.shape().isRequired,
@@ -501,7 +520,44 @@ class NavigationStore {
 
   setCustomReducer = (Navigator) => {
     this.getStateForAction = Navigator.router.getStateForAction;
+    const reducer = createReducer(this);
     Navigator.router.getStateForAction = (cmd, state) => (this.reducer ? this.reducer(state, cmd) : reducer(state, cmd));
+  };
+
+  onEnterHandler = async (currentScene) => {
+    if (this.states[currentScene]) {
+      const handler = this[currentScene + OnEnter];
+      const success = this.states[currentScene].success || defaultSuccess;
+      const failure = this.states[currentScene].failure || defaultFailure;
+      if (handler) {
+        try {
+          const res = await handler(this.currentParams, this.state);
+          if (res) {
+            success(res);
+          } else {
+            failure();
+          }
+        } catch (e) {
+          failure({ error: e.message });
+        }
+      }
+    }
+  };
+
+  onExitHandler = (prevScene) => {
+    if (prevScene) {
+      const exitHandler = this[prevScene + OnExit];
+      if (exitHandler) {
+        try {
+          const res = exitHandler(this.state);
+          if (res instanceof Promise) {
+            res.then(defaultSuccess, defaultFailure);
+          }
+        } catch (e) {
+          console.error('Error during onExit handler:', e);
+        }
+      }
+    }
   };
 
   onNavigationStateChange = async (prevState, currentState, action) => {
@@ -514,41 +570,19 @@ class NavigationStore {
     this.prevScene = this.prevState ? getActiveState(this.prevState).routeName : null;
     if (this.currentScene !== this.prevScene) {
       // run onExit for old scene
-      if (this.prevScene) {
-        const exitHandler = this[this.prevScene + OnExit];
-        if (exitHandler) {
-          try {
-            const res = exitHandler(this.state);
-            if (res instanceof Promise) {
-              res.then(defaultSuccess, defaultFailure);
-            }
-          } catch (e) {
-            console.error('Error during onExit handler:', e);
-          }
-        }
-      }
+      this.onExitHandler(this.prevScene);
       setTimeout(() => this.dispatch({
         type: ActionConst.FOCUS,
         routeName: this.currentScene,
         params: this.currentParams,
       }));
-      if (this.states[currentScene]) {
-        const handler = this[currentScene + OnEnter];
-        const success = this.states[currentScene].success || defaultSuccess;
-        const failure = this.states[currentScene].failure || defaultFailure;
-        // call onEnter handler
-        if (handler) {
-          try {
-            const res = await handler(this.currentParams, this.state);
-            if (res) {
-              success(res);
-            } else {
-              failure();
-            }
-          } catch (e) {
-            failure({ error: e.message });
-          }
-        }
+      this.onEnterHandler(currentScene);
+    } else {
+      const routeName = getRouteNameByKey(this.state, action.key);
+      if (action.type === 'Navigation/DRAWER_OPENED') {
+        this.onEnterHandler(routeName);
+      } else if (action.type === 'Navigation/DRAWER_CLOSED') {
+        this.onExitHandler(routeName);
       }
     }
     if (this.onStateChange) {
@@ -589,10 +623,10 @@ class NavigationStore {
     const res = {};
     const order = [];
     const {
-      navigator, renderer, contentComponent, drawerWidth, drawerLockMode, tabBarComponent, tabBarPosition, lazy, duration, ...parentProps
+      navigator, renderer, contentComponent, drawerWidth, drawerLockMode, tabBarPosition, lazy, duration, ...parentProps
     } = scene.props;
     let {
-      legacy, tabs, modal, lightbox, overlay, drawer, transitionConfig,
+      legacy, tabs, modal, lightbox, overlay, drawer, transitionConfig, tabBarComponent,
     } = parentProps;
     if (scene.type === Modal) {
       modal = true;
@@ -640,7 +674,7 @@ class NavigationStore {
     }
     // add all clones
     for (const child of children) {
-      if (child.props.clone) {
+      if (child && child.props.clone) {
         if (clones.indexOf(child) === -1) {
           clones.push(child);
         }
@@ -649,6 +683,10 @@ class NavigationStore {
     let initialRouteName;
     let initialRouteParams;
     for (const child of children) {
+      // allow null/false child, useful for conditionals
+      if (!child) {
+        continue;
+      }
       const key = child.key || `key${(counter += 1)}`;
       const init = key === children[0].key;
       assert(reservedKeys.indexOf(key) === -1, `Scene name cannot be reserved word: ${child.key}`);
@@ -785,9 +823,13 @@ class NavigationStore {
       let createTabNavigator = createMaterialTopTabNavigator;
       if (legacy) {
         createTabNavigator = DEPRECATED_createTabNavigator;
+        if (!tabBarComponent) {
+          tabBarComponent = tabBarPosition === 'top' ? props => <DEPRECATED_TabBarTop {...props} {...commonProps} /> : props => <DEPRECATED_TabBarBottom {...props} {...commonProps} />;
+        }
       } else if (tabBarPosition !== 'top') {
         createTabNavigator = createBottomTabNavigator;
       }
+
       return createTabNavigator(res, {
         lazy,
         tabBarComponent,
@@ -883,18 +925,23 @@ class NavigationStore {
     this.dispatch(DrawerActions.toggleDrawer());
   };
 
-  refresh = (data) => {
+  refresh = (data, sceneKey = null) => {
     const params = filterParam(data);
     const { key } = getActiveState(this.state);
-    this.dispatch(NavigationActions.setParams({ key, params }));
+    this.dispatch(
+      NavigationActions.setParams({
+        key: sceneKey || key,
+        params,
+      }),
+    );
   };
 
-  pop = ({ timeout, ...params } = {}) => {
+  pop = ({ timeout, key, ...params } = {}) => {
     const res = filterParam(params);
     if (timeout) {
       setTimeout(() => this.pop(params), timeout);
     } else {
-      this.dispatch(NavigationActions.back());
+      this.dispatch(NavigationActions.back({ key }));
       if (res.refresh) {
         this.refresh(res.refresh);
       }
@@ -919,11 +966,11 @@ class NavigationStore {
 
   reset = (routeName, data) => {
     const params = filterParam(data);
-    const { key } = getParent(this.state, routeName);
+    const parent = getParent(this.state, routeName);
     this.dispatch(
       StackActions.reset({
         index: 0,
-        key,
+        key: parent ? parent.key : null,
         actions: [
           NavigationActions.navigate({
             routeName,
